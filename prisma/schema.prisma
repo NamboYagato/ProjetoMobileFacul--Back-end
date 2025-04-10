@@ -13,11 +13,96 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+
+// Tipos de receita
+enum TipoReceita {
+  BEBIDAS
+  BOLOS
+  DOCES_E_SOBREMESAS
+  FITNES
+  LANCHES
+  MASSAS
+  SALGADOS
+  SAUDAVEL
+  SOPAS
+}
+
+// Tabela de Usuários
+model Usuario {
+  id        Int       @id @default(autoincrement())
+  nome      String
+  email     String    @unique
+  senha     String
+  receitas  Receita[]
+  curtidas  Curtida[]
+  favoritos Favorito[]
+  criadoEm  DateTime  @default(now())
+}
+
 model Receita {
-  id           Int      @id @default(autoincrement())
-  receita      String
-  tipo         String
-  ingredientes String
-  modo_preparo String
-  criadoEm     DateTime @default(now())
+  id            Int             @id @default(autoincrement())
+  titulo        String
+  descricao     String
+  tipo          TipoReceita
+  publicada     Boolean         @default(false)
+  criadoEm      DateTime        @default(now())
+  atualizadaEm  DateTime        @updatedAt
+
+  // Relações
+  autor         Usuario         @relation(fields: [autorId], references: [id])
+  autorId       Int
+  imagens       Imagem[]
+  ingredientes  Ingrediente[]
+  passo_a_passo Preparo[]
+  curtidas      Curtida[]
+  favoritos     Favorito[]
+}
+
+// Tabela de imagens
+model Imagem {
+  id          Int       @id @default(autoincrement())
+  url         String
+  tipo        String 
+  receita     Receita   @relation(fields: [receitaId], references: [id])
+  receitaId   Int
+}
+
+// Ingredientes da receita
+model Ingrediente {
+  id          Int       @id @default(autoincrement())
+  nome        String
+  quantidade  String
+  receita     Receita   @relation(fields: [receitaId], references: [id])
+  receitaId   Int
+}
+
+// Passo a passo do preparo
+model Preparo {
+  id                Int           @id @default(autoincrement())
+  ordemEtapa        Int
+  texto             String
+  receita           Receita       @relation(fields: [receitaId], references: [id])
+  receitaId         Int
+}
+
+// Curtidas das receitas
+model Curtida {
+  id              Int           @id @default(autoincrement())
+  usuario         Usuario       @relation(fields: [usuarioId], references: [id])
+  usuarioId       Int
+  receita         Receita       @relation(fields: [receitaId], references: [id])
+  receitaId       Int
+
+  @@unique([usuarioId, receitaId]) // O usuário só pode curtir a receita uma vez
+}
+
+// Receitas favoritas
+model Favorito {
+  id              Int           @id @default(autoincrement())
+  usuario         Usuario       @relation(fields: [usuarioId], references: [id])
+  usuarioId       Int
+  receita         Receita       @relation(fields: [receitaId], references: [id])
+  receitaId       Int
+
+  @@unique([usuarioId, receitaId]) // O usuário só pode favoritar a receita uma vez
 }
