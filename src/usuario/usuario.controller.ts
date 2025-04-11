@@ -1,12 +1,14 @@
-import { Controller, Post, Get, Patch, Param, Body, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Param, Body, HttpException, HttpStatus, UseGuards } from '@nestjs/common';
 import { UsuarioService } from './usuario.service';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('usuarios')
 export class UsuarioController {
   constructor(private readonly usuarioService: UsuarioService) {}
 
+  @UseGuards(JwtAuthGuard)
   @Post()
   async create(@Body() createUsuarioDto: CreateUsuarioDto) {
     try {
@@ -17,6 +19,7 @@ export class UsuarioController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get(':id')
   async findOne(@Param('id') id: string) {
     try {
@@ -26,6 +29,7 @@ export class UsuarioController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch(':id')
   async update(@Param('id') id: string, @Body() updateUsuarioDto: UpdateUsuarioDto) {
     try {
