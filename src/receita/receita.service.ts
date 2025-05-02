@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateReceitaDto } from './dto/create-receita.dto';
 import { UpdateReceitaDto } from './dto/update-receita.dto';
@@ -64,9 +64,12 @@ export class ReceitaService {
     });
   }
 
-  async update(id: number, data: UpdateReceitaDto) {
-    const updateData: any = {};
+  async update(id: number, data: UpdateReceitaDto, userId: number,) {
+    const receita = await this.prisma.receita.findUnique({ where: { id } });
+    if (!receita) throw new NotFoundException('Receita não encontrada.');
+    if (receita.autorId !== userId) throw new ForbiddenException('Você não pode editar esta receita.');
 
+    const updateData: any = {};
     if (data.titulo) updateData.titulo = data.titulo;
     if (data.descricao) updateData.descricao = data.descricao;
     if (data.tipo) updateData.tipo = data.tipo;
@@ -91,6 +94,7 @@ export class ReceitaService {
       where: { id },
       data: updateData,
       include: {
+        autor: true,
         imagens: true,
         ingredientes: true,
         passo_a_passo: true,
@@ -98,8 +102,10 @@ export class ReceitaService {
     });
   }
 
-  async delete(id: number) {
-    await this.findOne(id);
+  async delete(id: number, userId: number) {
+    const receita = await this.prisma.receita.findUnique({ where: { id } });
+    if (!receita) throw new NotFoundException('Receita não encontrada.');
+    if (receita.autorId !== userId) throw new ForbiddenException('Você não pode apagar esta receita.');
     return await this.prisma.receita.delete({
         where: { id },
     });
