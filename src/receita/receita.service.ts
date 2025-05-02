@@ -37,7 +37,7 @@ export class ReceitaService {
     return receita;
   }
 
-  async create(data: CreateReceitaDto) {
+  async create(data: CreateReceitaDto & { autorId: number }) {
     return await this.prisma.receita.create({
       data: {
         titulo: data.titulo,
