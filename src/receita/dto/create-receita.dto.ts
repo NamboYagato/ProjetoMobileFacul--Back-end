@@ -57,8 +57,8 @@ import {
     @IsBoolean()
     publicada: boolean;
   
-    @IsInt()
-    autorId: number;
+    // @IsInt()
+    // autorId: number;
   
     @IsArray()
     @ValidateNested({ each: true })
