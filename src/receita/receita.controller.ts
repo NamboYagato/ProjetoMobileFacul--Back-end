@@ -41,17 +41,18 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
       return await this.receitaService.create(data);
     }
   
+    @UseGuards(JwtAuthGuard)
     @Put(':id')
-    update(
-      @Param('id', ParseIntPipe) id: number,
-      @Body() updateReceitaDto: UpdateReceitaDto,
-    ) {
-      return this.receitaService.update(id, updateReceitaDto);
+    async update(@Req() req: Request, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateReceitaDto,) {
+      const userId = (req as any).user.id;
+      return await this.receitaService.update(id, dto, userId);
     }
   
+    @UseGuards(JwtAuthGuard)
     @Delete(':id')
-    delete(@Param('id', ParseIntPipe) id: number) {
-      return this.receitaService.delete(id);
+    async delete(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
+      const userId = (req as any).user.id;
+      return await this.receitaService.delete(id, userId);
     }
 }
   
