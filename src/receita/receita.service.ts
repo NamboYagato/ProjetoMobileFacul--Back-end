@@ -2,31 +2,57 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateReceitaDto } from './dto/create-receita.dto';
 import { UpdateReceitaDto } from './dto/update-receita.dto';
+import { TipoReceita } from '@prisma/client';
+import { contains } from 'class-validator';
 
 @Injectable()
 export class ReceitaService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll() {
-    return await this.prisma.receita.findMany({
+  async findAll(search?: string, type?: TipoReceita, userId?: number) {
+    const receitas = await this.prisma.receita.findMany({
+      where: {
+        AND: [ search ? { titulo: { contains: search, mode: 'insensitive'} } : {}, type ? { tipo: type } : {}, ],
+      },
       include: {
-        autor: true,
+        autor: {
+          select: { id: true, nome: true, email: true, criadoEm: true}
+        },
         imagens: true,
         ingredientes: true,
         passo_a_passo: true,
+        _count: {
+          select: { curtidas: true, favoritos: true},
+        },
+        curtidas: userId ? { where: { usuarioId: userId } } : false,
+        favoritos: userId ? { where: { usuarioId: userId } } : false,
       },
       orderBy: { criadoEm: 'desc' },
     });
+    return receitas.map(r => ({
+      ...r,
+      likeCount: r._count.curtidas,
+      favoriteCount: r._count.favoritos,
+      liked: Array.isArray(r.curtidas) && r.curtidas.length > 0,
+      favorited: Array.isArray(r.favoritos) && r.favoritos.length > 0
+    }));
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, userId?: number) {
     const receita = await this.prisma.receita.findUnique({
       where: { id },
       include: {
-        autor: true,
+        autor: {
+          select: { id: true, nome: true, email: true, criadoEm: true}
+        },
         imagens: true,
         ingredientes: true,
         passo_a_passo: true,
+        _count: {
+          select: { curtidas: true, favoritos: true },
+        },
+        curtidas: userId ? { where: { usuarioId: userId } } : false,
+        favoritos: userId ? { where: { usuarioId: userId } } : false,
       },
     });
 
@@ -109,5 +135,53 @@ export class ReceitaService {
     return await this.prisma.receita.delete({
         where: { id },
     });
+  }
+  
+  // Func para verificar se o usuário já curtiu a receita
+  async hasLiked(receitaId: number, userId: number) {
+    const existing = await this.prisma.curtida.findUnique({
+      where: { usuarioId_receitaId: { usuarioId: userId, receitaId: receitaId } }
+    });
+    return !!existing;
+  }
+
+  // Func que utiliza a "hasLiked" para dar toggle na curtida
+  async toggleLike(receitaId: number, userId: number) {
+    const liked = await this.hasLiked(receitaId, userId);
+    if (liked) {
+      await this.prisma.curtida.delete({
+        where: { usuarioId_receitaId: { usuarioId: userId, receitaId: receitaId } }
+      });
+      return { liked: false };
+    } else {
+      await this.prisma.curtida.create({
+        data: { receitaId, usuarioId: userId }
+      });
+      return { liked: true };
+    }
+  }
+
+  // Func para verificar se o usuário já favoritou a receita
+  async hasFavorited(receitaId: number, userId: number) {
+    const existing = await this.prisma.favorito.findUnique({
+      where: { usuarioId_receitaId: { usuarioId: userId, receitaId: receitaId } }
+    });
+    return !!existing;
+  }
+
+  // Func que utiliza a "hasFavorited" para dar toggle no favorito
+  async toggleFavorite(receitaId: number, userId: number) {
+    const favorited = await this.hasFavorited(receitaId, userId);
+    if (favorited) {
+      await this.prisma.favorito.delete({
+        where: { usuarioId_receitaId: { usuarioId: userId, receitaId: receitaId } }
+      });
+      return { favorited: false };
+    } else {
+      await this.prisma.favorito.create({
+        data: { receitaId, usuarioId: userId }
+      });
+      return { favorited: true };
+    }
   }
 } 

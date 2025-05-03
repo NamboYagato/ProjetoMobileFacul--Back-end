@@ -7,26 +7,32 @@ import {
     Param,
     Body,
     ParseIntPipe,
-    UseGuards, Req
+    UseGuards, Req,
+    Query
   } from '@nestjs/common';
   import { Request } from 'express';
   import { ReceitaService } from './receita.service';
   import { CreateReceitaDto } from './dto/create-receita.dto';
   import { UpdateReceitaDto } from './dto/update-receita.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { TipoReceita } from '@prisma/client';
+import { JwtSecretRequestType } from '@nestjs/jwt';
   
   @Controller('receitas')
   export class ReceitaController {
     constructor(private readonly receitaService: ReceitaService) {}
-  
+    
+    @UseGuards(JwtAuthGuard)
     @Get()
-    findAll() {
-      return this.receitaService.findAll();
+    async findAll(@Req() req: Request, @Query('search') search?: string, @Query('type') type?: TipoReceita,) {
+      return this.receitaService.findAll(search, type, (req as any).user.id);
     }
-  
+    
+    @UseGuards(JwtAuthGuard)
     @Get(':id')
-    findOne(@Param('id', ParseIntPipe) id: number) {
-      return this.receitaService.findOne(id);
+    async findOne(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
+      const userId = (req as any)?.user?.id;
+      return this.receitaService.findOne(id, userId);
     }
   
     @UseGuards(JwtAuthGuard)
@@ -53,6 +59,22 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
     async delete(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
       const userId = (req as any).user.id;
       return await this.receitaService.delete(id, userId);
+    }
+
+    // CURTIDAS
+    @UseGuards(JwtAuthGuard)
+    @Post(':id/curtir')
+    async toggleLike(@Req() req: Request, @Param('id', ParseIntPipe) receitaId: number) {
+      const userId = (req as any).user.id;
+      return this.receitaService.toggleLike(receitaId, userId);
+    }
+
+    // FAVORITOS
+    @UseGuards(JwtAuthGuard)
+    @Post(':id/favoritar')
+    async toggleFavorite(@Req() req: Request, @Param('id', ParseIntPipe) receitaId: number) {
+      const userId = (req as any).user.id;
+      return this.receitaService.toggleFavorite(receitaId, userId);
     }
 }
   
