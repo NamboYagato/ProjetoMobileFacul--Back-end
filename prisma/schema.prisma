@@ -37,6 +37,7 @@ model Usuario {
   curtidas  Curtida[]
   favoritos Favorito[]
   criadoEm  DateTime  @default(now())
+  resetTokens PasswordResetToken[]
 }
 
 model Receita {
@@ -105,4 +106,15 @@ model Favorito {
   receitaId       Int
 
   @@unique([usuarioId, receitaId]) // O usuário só pode favoritar a receita uma vez
+}
+
+// Tabela para guardar o token do "esqueci a senha"
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id])
+  usuarioId Int
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
 }
