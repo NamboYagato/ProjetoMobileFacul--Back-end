@@ -1,30 +1,5 @@
-/*
-  Warnings:
-
-  - You are about to drop the column `ingredientes` on the `Receita` table. All the data in the column will be lost.
-  - You are about to drop the column `modo_preparo` on the `Receita` table. All the data in the column will be lost.
-  - You are about to drop the column `receita` on the `Receita` table. All the data in the column will be lost.
-  - Added the required column `atualizadaEm` to the `Receita` table without a default value. This is not possible if the table is not empty.
-  - Added the required column `autorId` to the `Receita` table without a default value. This is not possible if the table is not empty.
-  - Added the required column `descricao` to the `Receita` table without a default value. This is not possible if the table is not empty.
-  - Added the required column `titulo` to the `Receita` table without a default value. This is not possible if the table is not empty.
-  - Changed the type of `tipo` on the `Receita` table. No cast exists, the column would be dropped and recreated, which cannot be done if there is data, since the column is required.
-
-*/
 -- CreateEnum
 CREATE TYPE "TipoReceita" AS ENUM ('BEBIDAS', 'BOLOS', 'DOCES_E_SOBREMESAS', 'FITNES', 'LANCHES', 'MASSAS', 'SALGADOS', 'SAUDAVEL', 'SOPAS');
-
--- AlterTable
-ALTER TABLE "Receita" DROP COLUMN "ingredientes",
-DROP COLUMN "modo_preparo",
-DROP COLUMN "receita",
-ADD COLUMN     "atualizadaEm" TIMESTAMP(3) NOT NULL,
-ADD COLUMN     "autorId" INTEGER NOT NULL,
-ADD COLUMN     "descricao" TEXT NOT NULL,
-ADD COLUMN     "publicada" BOOLEAN NOT NULL DEFAULT false,
-ADD COLUMN     "titulo" TEXT NOT NULL,
-DROP COLUMN "tipo",
-ADD COLUMN     "tipo" "TipoReceita" NOT NULL;
 
 -- CreateTable
 CREATE TABLE "Usuario" (
@@ -35,6 +10,20 @@ CREATE TABLE "Usuario" (
     "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Usuario_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Receita" (
+    "id" SERIAL NOT NULL,
+    "titulo" TEXT NOT NULL,
+    "descricao" TEXT NOT NULL,
+    "tipo" "TipoReceita" NOT NULL,
+    "publicada" BOOLEAN NOT NULL DEFAULT false,
+    "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "atualizadaEm" TIMESTAMP(3) NOT NULL,
+    "autorId" INTEGER NOT NULL,
+
+    CONSTRAINT "Receita_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -84,6 +73,9 @@ CREATE TABLE "Favorito" (
 
     CONSTRAINT "Favorito_pkey" PRIMARY KEY ("id")
 );
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Usuario_nome_key" ON "Usuario"("nome");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Usuario_email_key" ON "Usuario"("email");

@@ -1,4 +1,3 @@
-// src/usuario/usuario.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
@@ -26,7 +25,6 @@ export class UsuarioService {
     return usuario;
   }
 
-  // Método para buscar usuário por email
   async findByEmail(email: string) {
     return await this.prisma.usuario.findUnique({
       where: { email },
