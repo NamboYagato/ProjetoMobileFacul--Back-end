@@ -1,4 +1,3 @@
-// src/receita/receita.module.ts
 import { Module } from '@nestjs/common';
 import { ReceitaService } from './receita.service';
 import { ReceitaController } from './receita.controller';

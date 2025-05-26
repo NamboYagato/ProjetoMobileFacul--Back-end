@@ -77,4 +77,3 @@ import { JwtSecretRequestType } from '@nestjs/jwt';
       return this.receitaService.toggleFavorite(receitaId, userId);
     }
 }
-  

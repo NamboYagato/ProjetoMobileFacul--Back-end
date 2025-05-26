@@ -29,14 +29,16 @@ enum TipoReceita {
 
 // Tabela de Usuários
 model Usuario {
-  id        Int       @id @default(autoincrement())
-  nome      String
-  email     String    @unique
-  senha     String
-  receitas  Receita[]
-  curtidas  Curtida[]
-  favoritos Favorito[]
-  criadoEm  DateTime  @default(now())
+  id                   Int       @id @default(autoincrement())
+  nome                 String    @unique
+  email                String    @unique
+  senha                String
+  receitas             Receita[]
+  curtidas             Curtida[]
+  favoritos            Favorito[]
+  criadoEm             DateTime  @default(now())
+  resetPasswordToken   String?
+  resetPasswordExpires DateTime?
 }
 
 model Receita {
