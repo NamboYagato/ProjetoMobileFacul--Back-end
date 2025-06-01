@@ -22,7 +22,7 @@ import { join } from 'path';
         secure: configService.get<string>('MAIL_SECURE') === 'true',
         auth: {
           user: configService.get<string>('MAIL_USER'),
-          pass: configService.get<string>('MAIL_PASSWORD'),
+          pass: configService.get<string>('MAIL_PASS'),
         },
       },
       defaults: {

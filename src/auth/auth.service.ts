@@ -9,11 +9,15 @@ import { createHash, randomBytes } from 'crypto';
 import { MailerService } from '@nestjs-modules/mailer';
 import { ConfigService } from '@nestjs/config';
 import { Usuario } from '@prisma/client';
+import { error } from 'console';
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name)
   private readonly BCRYPT_SALT_ROUNDS = 10;
+  private readonly OTP_LENGTH = 6;
+  private readonly OTP_MINUTES = 15; // OTP expires in 15 min
+  private readonly SESSION_TOKEN_MINUTES = 5; // Time to change password
 
   constructor(
     private usuarioService: UsuarioService,
@@ -22,8 +26,20 @@ export class AuthService {
     private readonly configService: ConfigService,
   ) {}
 
+  private generateOtp(length: number = this.OTP_LENGTH): string {
+    const characters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let otp = '';
+    for (let i = 0; i < length; i++) {
+      otp += characters.charAt(Math.floor(Math.random() * characters.length));
+    }
+    return otp;
+  }
+
+  private hashOtp(otp: string): string {
+    return createHash('sha256').update(otp).digest('hex');
+  }
+  
   async register(data: CreateUsuarioDto) {
-    // Hasheia a senha antes de salvar o usuário
 
     data.senha = await bcrypt.hash(data.senha, this.BCRYPT_SALT_ROUNDS);
 
@@ -63,24 +79,21 @@ export class AuthService {
       return;
     }
 
-    const token = randomBytes(32).toString('hex');
+    const otp = this.generateOtp();
+    const hashedOtp = this.hashOtp(otp);
     const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 1);
+    expiresAt.setMinutes(expiresAt.getMinutes() + 15);
 
-    const hashedToken = createHash('sha256').update(token).digest('hex');
 
     try {
       await this.usuarioService.update(user.id, {
-        resetPasswordToken: hashedToken,
-        resetPasswordExpires: expiresAt,
+        resetPasswordOtp: hashedOtp,
+        resetPasswordOtpExpires: expiresAt,
       });
     } catch (dbError) {
-      this.logger.error(`Falha ao salvar token de reset para ${email}`, dbError.stack);
+      this.logger.error(`Falha ao salvar Otp de reset para ${email}`, dbError.stack);
       return
     }
-
-    const frontEndBaseUrl = this.configService.get<string>('FRONTEND_BASE_URL') || 'http://localhost:3000';
-    const resetLink = `${frontEndBaseUrl}/resetar-senha?token=${token}`;
 
     try {
       await this.mailerService.sendMail({
@@ -89,73 +102,97 @@ export class AuthService {
         template: './password-reset',
         context: {
           name: user.nome,
-          resetLink,
+          otpCode: otp,
+          otpTime: this.OTP_MINUTES,
         },
       });
-      this.logger.log(`Link de redefinição de senha enviado para ${user.email}`);
-    } catch (emailError) {
-      this.logger.error(`Falha ao enviar e-mail de redefinição para ${user.email}`, emailError.stack);
-    }
-  }
-
-  async verifyResetToken(token: string): Promise<Usuario | null> {
-    if (!token) {
-      throw new BadRequestException('Token não fornecido.');
-    }
-    const hashedToken = createHash('sha256').update(token).digest('hex');
-
-    const user = await this.usuarioService.findByFields({
-      resetPasswordToken: hashedToken,
-    });
-
-    if (!user || !user.resetPasswordToken) {
-      throw new BadRequestException('Token inválido ou já utilizado.');
-    }
-
-    if (user.resetPasswordExpires && user.resetPasswordExpires < new Date()) {
-      await this.clearResetToken(user.id);
-      throw new BadRequestException('Token expirado.');
-    }
-    return user;
-  }
-
-  async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<void> {
-    const { token, password } = resetPasswordDto;
-
-    let user: Usuario;
-    try {
-      user = await this.verifyResetToken(token);
+      this.logger.log(`e-mail enviado para ${user.email}`);
     } catch (error) {
-      this.logger.warn(`Tentativa de reset de senha falhou: ${error.message}`);
-      throw error;
+      this.logger.error(`Falha ao enviar e-mail de redefinição para ${user.email}`, error.stack);
+    }
+  }
+
+  async verifyOtp(email: string, userOtp: string): Promise<{ passwordChangeSessionToken: string }> {
+    const user = await this.usuarioService.findByEmail(email);
+
+    if (!user || !user.resetPasswordOtp || !user.resetPasswordOtpExpires) {
+      this.logger.warn('Tentativa de verificação de OTP falhou, usuário ou OTP não encontrado.');
+      throw new BadRequestException('OTO inválido ou expirado.');
     }
 
-    if (!user) {
-      throw new BadRequestException('Token inválido ou expirado.');
+    const hashedUserOto = this.hashOtp(userOtp);
+
+    if (user.resetPasswordOtp < hashedUserOto) {
+      this.logger.warn(`Hash do OTP incorreto.`);
+      throw new BadRequestException('Código de verificação inválido.');
     }
-    const hashedPassword = await bcrypt.hash(password, this.BCRYPT_SALT_ROUNDS);
+
+    if (user.resetPasswordOtpExpires < new Date()) {
+      this.logger.warn(`Código expirado.`);
+      await this.usuarioService.update(user.id, {
+        resetPasswordOtp: null,
+        resetPasswordOtpExpires: null,
+      });
+      throw new BadRequestException('Código de verificação expirado. Por favor, solicite um novo.');
+    }
+
+    const sessionToken = randomBytes(32).toString('hex');
+    const sessionTokenExpiresAt = new Date();
+    sessionTokenExpiresAt.setMinutes(sessionTokenExpiresAt.getMinutes() + this.SESSION_TOKEN_MINUTES);
 
     try {
       await this.usuarioService.update(user.id, {
-        password: hashedPassword,
-        resetPasswordToken: null,
-        resetPasswordExpires: null,
+        resetPasswordOtp: null,
+        resetPasswordOtpExpires: null,
+        passwordChangeSessionToken: sessionToken,
+        passwordChangeSessionTokenExpires: sessionTokenExpiresAt,
       });
-      this.logger.log(`Senha redefinida com sucesso para o usuário ID: ${user.id}`);
-    } catch (dbError) {
-      this.logger.error(`Falha ao atualizar senha para usuário ID: ${user.id}`, dbError.stack);
-      throw new InternalServerErrorException('Ocorreu um erro ao redefinir sua senha. Tente novamente.');
+    } catch (dbError: any) {
+      this.logger.error(`Falha ao criar token de sessão para ${email}: ${dbError.stack || dbError.message}`);
+      throw new InternalServerErrorException('Erro ao processar sua solicitação.');
     }
+
+    this.logger.log(`OTP verificado e token de sessão criado para ${email}`);
+    return { passwordChangeSessionToken: sessionToken };
   }
 
-  private async clearResetToken(userId: string | number): Promise<void> {
-    try {
-      await this.usuarioService.update(userId, {
-        resetPasswordToken: null,
-        resetPasswordExpires: null,
+  async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<void> {
+    const { passwordChangeSessionToken, novaSenha } = resetPasswordDto;
+
+    if (!passwordChangeSessionToken || !novaSenha) {
+      throw new BadRequestException('Token de sessão e nova senha são obrigatórios.');
+    }
+
+    const user = await this.usuarioService.findByFields({
+      passwordChangeSessionToken: passwordChangeSessionToken,
+    });
+
+    if (!user || !user.passwordChangeSessionTokenExpires) {
+      this.logger.warn(`Token de sessão inválido ${passwordChangeSessionToken.substring(0,10)}...`);
+      throw new BadRequestException('Sessão de redefinição de senha inválida ou expirada.');
+    }
+
+    if (user.passwordChangeSessionTokenExpires < new Date()) {
+      this.logger.warn(`Token de sessão expirado para usuário ${user.id}`);
+      await this.usuarioService.update(user.id, {
+        passwordChangeSessionToken: null,
+        passwordChangeSessionTokenExpires: null,
       });
-    } catch (error) {
-      this.logger.error(`Falha ao limpar token de reset para usuário ID: ${userId}`, error.stack);
+      throw new BadRequestException('Sua sessão para redefinir senha expirou. Inicie o processo novamente.');
+    }
+
+    const hashedPassword = await bcrypt.hash(novaSenha, this.BCRYPT_SALT_ROUNDS);
+
+    try {
+      await this.usuarioService.update(user.id, {
+        senha: hashedPassword,
+        passwordChangeSessionToken: null,
+        passwordChangeSessionTokenExpires: null
+      });
+      this.logger.log(`Senha redefinida com sucesso`);
+    } catch (dbError: any) {
+      this.logger.error(`Falha ao finalizar reset de senha para usuário: ${dbError.stack || dbError.message}`);
+      throw new InternalServerErrorException('Ocorreu um erro ao redefinir sua senha.');
     }
   }
 }
