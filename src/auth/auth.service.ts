@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, Logger, BadRequestException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsuarioService } from 'src/usuario/usuario.service';
 import { CreateUsuarioDto } from 'src/usuario/dto/create-usuario.dto';
@@ -8,8 +8,7 @@ import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes } from 'crypto';
 import { MailerService } from '@nestjs-modules/mailer';
 import { ConfigService } from '@nestjs/config';
-import { Usuario } from '@prisma/client';
-import { error } from 'console';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Injectable()
 export class AuthService {
@@ -193,6 +192,46 @@ export class AuthService {
     } catch (dbError: any) {
       this.logger.error(`Falha ao finalizar reset de senha para usuário: ${dbError.stack || dbError.message}`);
       throw new InternalServerErrorException('Ocorreu um erro ao redefinir sua senha.');
+    }
+  }
+
+  async changePasswordLoggedUser(userId: number, changePasswordDto: ChangePasswordDto): Promise<void> {
+    const { senhaAtual, novaSenha, confirmarNovaSenha } = changePasswordDto;
+
+    if (novaSenha !== confirmarNovaSenha) {
+      throw new BadRequestException('A nova senha e a confirmação não conferem.');
+    }
+
+    const user = await this.usuarioService.findOne(userId);
+    if (!user) {
+      this.logger.error(`Usuário não encontrado para mudança de senha: Id ${userId}`);
+      throw new NotFoundException('Usuário não encontrado.');
+    }
+
+    const isCurrentPasswordValid = await bcrypt.compare(senhaAtual, user.senha);
+    if (!isCurrentPasswordValid) {
+      this.logger.warn(`Tentativa de mudança de senha falhou para usuário ID ${userId}: Senha atual incorreta.`);
+      throw new UnauthorizedException('A senha atual fornecida está incorreta.');
+    }
+
+    if (await bcrypt.compare(novaSenha, user.senha)) {
+      throw new BadRequestException('A nova senha não pode ser igual à senha atual.');
+    }
+
+    const hashedNewPassword = await bcrypt.hash(novaSenha, this.BCRYPT_SALT_ROUNDS);
+
+    try {
+      await this.usuarioService.update(userId, {
+        senha: hashedNewPassword,
+        resetPasswordOtp: null,
+        resetPasswordOtpExpires: null,
+        passwordChangeSessionToken: null,
+        passwordChangeSessionTokenExpires: null
+      });
+      this.logger.log(`Senha alterada com sucesso pelo usuário logado ID: ${userId}`);
+    } catch (dbError: any) {
+      this.logger.error(`Falha ao atualizar senha para ID ${userId}: ${dbError.stack || dbError.message}`);
+      throw new InternalServerErrorException('Ocorreu um erro ao tentar alterar sua senha.');
     }
   }
 }

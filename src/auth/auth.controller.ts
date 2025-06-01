@@ -1,13 +1,13 @@
-import { Controller, Post, Body, Get, Res, HttpCode, HttpStatus, Param, Patch, BadGatewayException, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, Patch, BadGatewayException, BadRequestException, UseGuards, UnauthorizedException, Req } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateUsuarioDto } from 'src/usuario/dto/create-usuario.dto';
 import { LoginDto } from './dto/login.dto';
-import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { MailerService } from '@nestjs-modules/mailer';
-import { verify } from 'crypto';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -56,5 +56,18 @@ export class AuthController {
   async resetPassword(@Body() resetPasswordDto: ResetPasswordDto): Promise<{ message: string }> {
     await this.authService.resetPassword(resetPasswordDto);
     return { message: 'Sua senha foi redefinida com sucesso.' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('change-password')
+  @HttpCode(HttpStatus.OK)
+  async changePasswordLoggedIn(@Req() requestWithUser: any, @Body()changePasswordDto: ChangePasswordDto): Promise<{ message: string }> {
+    const userId = requestWithUser.user.id;
+
+    if (!userId) {
+      throw new UnauthorizedException('ID do usuário nã encontrado no token.');
+    }
+    await this.authService.changePasswordLoggedUser(userId, changePasswordDto);
+    return { message: 'Sua senha foi alterada com sucesso.'};
   }
 }
