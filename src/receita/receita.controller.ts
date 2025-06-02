@@ -27,6 +27,12 @@ import { JwtSecretRequestType } from '@nestjs/jwt';
     async findAll(@Req() req: Request, @Query('search') search?: string, @Query('type') type?: TipoReceita,) {
       return this.receitaService.findAll(search, type, (req as any).user.id);
     }
+
+    @UseGuards(JwtAuthGuard)
+    @Get('publicas')
+    async findAllPublicRecipes(@Query('search') search?: string, @Query('type') type?: TipoReceita) {
+      return this.receitaService.findAllPublicRecipe(search, type);
+    }
     
     @UseGuards(JwtAuthGuard)
     @Get(':id')

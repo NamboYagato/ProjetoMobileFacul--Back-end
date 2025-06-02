@@ -26,7 +26,7 @@ import { join } from 'path';
         },
       },
       defaults: {
-        from: `"Não sei o nome do app" <${configService.get<string>('MAIL_FROM')}`,
+        from: `"MenuUp" <${configService.get<string>('MAIL_FROM')}`,
       },
       template: {
         dir: join(__dirname, '..', 'templates'),

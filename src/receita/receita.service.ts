@@ -38,6 +38,50 @@ export class ReceitaService {
     }));
   }
 
+  async findAllPublicRecipe(search?: string, type?: TipoReceita) {
+    const whereConditions: any = {
+      publicada: false,
+    };
+
+    if (search) {
+      whereConditions.OR = [
+        { titulo: { contains: search, mode: 'insensitive' } },
+        { descricao: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    if (type) {
+      whereConditions.tipo = type;
+    }
+
+    return this.prisma.receita.findMany({
+      where: whereConditions,
+      select: {
+        id: true,
+        titulo: true,
+        descricao: true,
+        tipo: true,
+        autor: {
+          select: {
+            id: true,
+            nome: true
+          }
+        },
+        imagens: {
+          select: {
+            id: true,
+            url: true,
+          }
+        },
+        criadoEm: true,
+        atualizadaEm: true
+      },
+      orderBy: {
+        criadoEm: 'desc'
+      }
+    });
+  }
+
   async findOne(id: number, userId?: number) {
     const receita = await this.prisma.receita.findUnique({
       where: { id },
