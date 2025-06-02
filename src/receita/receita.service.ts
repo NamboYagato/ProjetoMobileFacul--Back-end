@@ -40,7 +40,7 @@ export class ReceitaService {
 
   async findAllPublicRecipe(search?: string, type?: TipoReceita) {
     const whereConditions: any = {
-      publicada: false,
+      publicada: true,
     };
 
     if (search) {
