@@ -43,11 +43,10 @@ export class AuthService {
     data.senha = await bcrypt.hash(data.senha, this.BCRYPT_SALT_ROUNDS);
 
     const user = await this.usuarioService.create(data);
-    const payload = { sub: user.id, email: user.email };
+    const payload = { nome: user.nome, email: user.email };
 
     return {
-      user,
-      token: this.jwtService.sign(payload),
+      ...payload
     };
   }
 
@@ -62,10 +61,9 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
-    const payload = { sub: user.id, email: user.email };
+    const payload = { email: user.email };
 
     return {
-      user,
       token: this.jwtService.sign(payload),
     };
   }
