@@ -8,7 +8,10 @@ import {
     Body,
     ParseIntPipe,
     UseGuards, Req,
-    Query
+    Query,
+    UnauthorizedException,
+    UseInterceptors,
+    UploadedFiles
   } from '@nestjs/common';
   import { Request } from 'express';
   import { ReceitaService } from './receita.service';
@@ -17,6 +20,7 @@ import {
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { TipoReceita } from '@prisma/client';
 import { JwtSecretRequestType } from '@nestjs/jwt';
+import { FilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
   
   @Controller('receitas')
   export class ReceitaController {
@@ -33,6 +37,14 @@ import { JwtSecretRequestType } from '@nestjs/jwt';
     async findAllPublicRecipes(@Query('search') search?: string, @Query('type') type?: TipoReceita) {
       return this.receitaService.findAllPublicRecipe(search, type);
     }
+
+    @UseGuards(JwtAuthGuard)
+    @Get('privadas')
+    async findRecipesByUserId(@Req() req: Request) {
+      const userId = (req as any).user.id;
+      if (!userId) throw new UnauthorizedException('UserId não encontrado.');
+      return await this.receitaService.findRecipeByUserId(userId);
+    }
     
     @UseGuards(JwtAuthGuard)
     @Get(':id')
@@ -43,21 +55,22 @@ import { JwtSecretRequestType } from '@nestjs/jwt';
   
     @UseGuards(JwtAuthGuard)
     @Post('create')
-    async create(@Req() req: Request, @Body() dto: CreateReceitaDto) {
+    @UseInterceptors(FilesInterceptor('imagens'))
+    async create(@Req() req: Request, @Body() dto: CreateReceitaDto, @UploadedFiles() imagens: Express.Multer.File[]) {
       const autorId = (req as any).user.id;
       const data = {
         ...dto,
         autorId,
       };
-
-      return await this.receitaService.create(data);
+      return await this.receitaService.create(data, imagens);
     }
   
     @UseGuards(JwtAuthGuard)
     @Put(':id')
-    async update(@Req() req: Request, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateReceitaDto,) {
+    @UseInterceptors(FilesInterceptor('imagens'))
+    async update(@Req() req: Request, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateReceitaDto, @UploadedFiles() imagens: Express.Multer.File[]) {
       const userId = (req as any).user.id;
-      return await this.receitaService.update(id, dto, userId);
+      return await this.receitaService.update(id, dto, userId, imagens);
     }
   
     @UseGuards(JwtAuthGuard)

@@ -9,6 +9,8 @@ import { createHash, randomBytes } from 'crypto';
 import { MailerService } from '@nestjs-modules/mailer';
 import { ConfigService } from '@nestjs/config';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 @Injectable()
 export class AuthService {
@@ -23,6 +25,7 @@ export class AuthService {
     private jwtService: JwtService,
     private readonly mailerService: MailerService,
     private readonly configService: ConfigService,
+    private prisma: PrismaService,
   ) {}
 
   private generateOtp(length: number = this.OTP_LENGTH): string {
@@ -53,19 +56,74 @@ export class AuthService {
   async login(data: LoginDto) {
     const user = await this.usuarioService.findByEmail(data.email);
     if (!user) {
-      throw new UnauthorizedException('Credenciais inválidas');
+      throw new UnauthorizedException('Credenciais inválidas Email');
     }
 
     const isPasswordValid = await bcrypt.compare(data.senha, user.senha);
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Credenciais inválidas');
+      throw new UnauthorizedException('Credenciais inválidas Senha');
     }
 
-    const payload = { email: user.email };
-
+    const payload = { sub: user.id, email: user.email };
     return {
       token: this.jwtService.sign(payload),
+      user: {
+        email: user.email,
+      }
     };
+  }
+
+  async validateTokenAndGetUser(userId: number): Promise<boolean> {
+    console.log(userId)
+  const user = await this.usuarioService.findOne(userId)
+  if (!user) {
+    throw new UnauthorizedException('Usuário não encontrado.');
+  }
+  return true
+  }
+
+  async logout(token: string): Promise<void> {
+    if (!token) {
+      this.logger.warn('Tentativa de logout sem fornecer um token.');
+      throw new BadRequestException('Token não fornecido.');
+    }
+
+    try {
+      const decodedToken = this.jwtService.decode(token) as { exp: number; [key: string]: any };
+
+      if (!decodedToken || !decodedToken.exp) {
+        const now = new Date();
+        const fallbackExpiresAt = new Date(now.getTime() + 5 * 60 * 1000);
+
+        await this.prisma.blockedToken.create({
+          data: {
+            token: token,
+            expiresAt: fallbackExpiresAt
+          },
+        });
+        this.logger.log(`Token (potencialmente inválido) adicionado à blocklist com expiração de fallback.`);
+        return;
+      }
+      const expiresAt = new Date(decodedToken.exp * 1000);
+
+      if (expiresAt < new Date()) {
+        this.logger.log(`Tentativa de logout com token já expirado: ${token.substring(0, 20)}...`);
+        return;
+      }
+      await this.prisma.blockedToken.create({
+        data: {
+          token: token,
+          expiresAt: expiresAt,
+        },
+      });
+      this.logger.log(`Token ${token.substring(0, 20)}... adicionado à blocklist. Expira em: ${expiresAt.toISOString()}`);
+    } catch (error) {
+      if (error.code === 'P2002') {
+        this.logger.warn(`Token ${token.substring(0, 20)}... já está na blocklist.`);
+        return;
+      }
+      this.logger.error(`Erro ao adicionar token à blocklist: ${error.message}`, error.stack);
+    }
   }
 
   async requestPasswordReset(email: string): Promise<void> {
@@ -232,4 +290,23 @@ export class AuthService {
       throw new InternalServerErrorException('Ocorreu um erro ao tentar alterar sua senha.');
     }
   }
+
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async handleCron() {
+    this.logger.log('Executando limpeza de tokens bloqueados expirados...');
+    try {
+      const now = new Date();
+      const result = await this.prisma.blockedToken.deleteMany({
+        where: {
+          expiresAt: {
+            lt: now,
+          },
+        },
+      });
+      this.logger.log(`Limpeza concluída. ${result.count} tokens bloqueados expirados foram removidos.`);
+    } catch (error) {
+      this.logger.error('Falha ao limpar tokens bloqueados expirados.', error.stack);
+    }
+  }
+
 }

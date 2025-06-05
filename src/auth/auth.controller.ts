@@ -1,17 +1,17 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Patch, BadGatewayException, BadRequestException, UseGuards, UnauthorizedException, Req } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, Patch, BadGatewayException, BadRequestException, UseGuards, UnauthorizedException, Req, Get } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateUsuarioDto } from 'src/usuario/dto/create-usuario.dto';
 import { LoginDto } from './dto/login.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { MailerService } from '@nestjs-modules/mailer';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { AuthGuard } from '@nestjs/passport';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService, private readonly mailerService: MailerService,) {}
+  constructor(private readonly authService: AuthService) {}
 
   @Post('register')
   async register(@Body() createUsuarioDto: CreateUsuarioDto) {
@@ -21,6 +21,19 @@ export class AuthController {
   @Post('login')
   async login(@Body() loginDto: LoginDto) {
     return await this.authService.login(loginDto);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  async logout(@Req() request: Request) {
+    const authHeader = request.headers['authorization'];
+    if (authHeader && authHeader.startsWith('Bearer')) {
+      const token = authHeader.substring(7);
+      await this.authService.logout(token);
+      return { message: 'Logout bem-sucedido.' };
+    }
+    return { message: 'Logout processado (token não extraído explicitamente no controller, mas o guard atuou).'}
   }
 
   @Post('request-password')
@@ -58,7 +71,7 @@ export class AuthController {
     return { message: 'Sua senha foi redefinida com sucesso.' };
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AuthGuard('jwt'))
   @Patch('change-password')
   @HttpCode(HttpStatus.OK)
   async changePasswordLoggedIn(@Req() requestWithUser: any, @Body()changePasswordDto: ChangePasswordDto): Promise<{ message: string }> {
@@ -69,5 +82,13 @@ export class AuthController {
     }
     await this.authService.changePasswordLoggedUser(userId, changePasswordDto);
     return { message: 'Sua senha foi alterada com sucesso.'};
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('validate-token')
+  @HttpCode(HttpStatus.OK)
+  async validateTokenAndGetUser(@Req() request: any): Promise<boolean> {
+    const payload = request.user as { id: number; email: string };
+    return await this.authService.validateTokenAndGetUser(payload.id);
   }
 }

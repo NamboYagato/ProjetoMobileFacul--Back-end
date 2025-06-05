@@ -65,8 +65,8 @@ model Receita {
 // Tabela de imagens
 model Imagem {
   id          Int       @id @default(autoincrement())
-  url         String
-  tipo        String 
+  contentType String
+  dataBase64  String  @db.Text
   receita     Receita   @relation(fields: [receitaId], references: [id])
   receitaId   Int
 }
@@ -109,4 +109,10 @@ model Favorito {
   receitaId       Int
 
   @@unique([usuarioId, receitaId]) // O usuário só pode favoritar a receita uma vez
+}
+
+model BlockedToken {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  expiresAt DateTime
 }

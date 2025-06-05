@@ -1,9 +1,11 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateReceitaDto } from './dto/create-receita.dto';
 import { UpdateReceitaDto } from './dto/update-receita.dto';
 import { TipoReceita } from '@prisma/client';
 import { contains } from 'class-validator';
+import { arrayBuffer } from 'stream/consumers';
+import sharp from 'sharp';
 
 @Injectable()
 export class ReceitaService {
@@ -36,6 +38,23 @@ export class ReceitaService {
       liked: Array.isArray(r.curtidas) && r.curtidas.length > 0,
       favorited: Array.isArray(r.favoritos) && r.favoritos.length > 0
     }));
+  }
+
+  async findRecipeByUserId(userId: number) {
+    const user = await this.prisma.usuario.findFirst({
+      where: {
+        id: userId
+      }
+    })
+    if (!user) {
+      throw new UnauthorizedException('Usuario não encontrado.');
+    }
+    const userRecipes = await this.prisma.receita.findMany({
+      where: {
+        autorId: userId
+      }
+    })
+    return userRecipes??[];
   }
 
   async findAllPublicRecipe(search?: string, type?: TipoReceita) {
@@ -107,7 +126,23 @@ export class ReceitaService {
     return receita;
   }
 
-  async create(data: CreateReceitaDto & { autorId: number }) {
+  async create(data: CreateReceitaDto & { autorId: number }, imagens: Express.Multer.File[]) {
+    const imagensPrisma = await Promise.all(
+      ((imagens as any) || []).map(async (file) => {
+        const bufferComprimido = await sharp(file.buffer)
+          .resize({ width: 800, withoutEnlargement: true })
+          .jpeg({ quality: 80 })
+          .toBuffer();
+
+        const base64 = bufferComprimido.toString('base64');
+        const dataUri = `data:image/jpeg;base64,${base64}`;
+
+        return {
+          contentType: 'image/jpeg',
+          dataBase64: dataUri,
+        };
+      }),
+    );
     return await this.prisma.receita.create({
       data: {
         titulo: data.titulo,
@@ -116,7 +151,7 @@ export class ReceitaService {
         publicada: data.publicada ?? false,
         autor: { connect: { id: data.autorId } },
         imagens: {
-          create: data.imagens,
+          create: imagensPrisma,
         },
         ingredientes: {
           create: data.ingredientes,
@@ -134,7 +169,7 @@ export class ReceitaService {
     });
   }
 
-  async update(id: number, data: UpdateReceitaDto, userId: number,) {
+  async update(id: number, data: UpdateReceitaDto, userId: number, imagens: Express.Multer.File[]) {
     const receita = await this.prisma.receita.findUnique({ where: { id } });
     if (!receita) throw new NotFoundException('Receita não encontrada.');
     if (receita.autorId !== userId) throw new ForbiddenException('Você não pode editar esta receita.');
@@ -145,9 +180,25 @@ export class ReceitaService {
     if (data.tipo) updateData.tipo = data.tipo;
     if (typeof data.publicada !== 'undefined') updateData.publicada = data.publicada;
 
-    if (data.imagens) {
+    if (imagens && imagens.length > 0) {
       await this.prisma.imagem.deleteMany({ where: { receitaId: id } });
-      updateData.imagens = { create: data.imagens };
+      const imagensPrisma = await Promise.all(
+        imagens.map(async (file) => {
+          const bufferComprimido = await sharp(file.buffer)
+            .resize({ width: 800, withoutEnlargement: true })
+            .jpeg({ quality: 80 })
+            .toBuffer();
+
+          const base64 = bufferComprimido.toString('base64');
+          const dataUri = `data:image/jpeg;base64,${base64}`;
+
+          return {
+            contentType: 'image/jpeg',
+            dataBase64: dataUri,
+          };
+        })
+      );
+      updateData.imagens = { create: imagensPrisma };
     }
 
     if (data.ingredientes) {

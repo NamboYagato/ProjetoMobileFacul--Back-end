@@ -62,11 +62,6 @@ import {
   
     @IsArray()
     @ValidateNested({ each: true })
-    @Type(() => ImagemDto)
-    imagens: ImagemDto[];
-  
-    @IsArray()
-    @ValidateNested({ each: true })
     @Type(() => IngredienteDto)
     ingredientes: IngredienteDto[];
   
