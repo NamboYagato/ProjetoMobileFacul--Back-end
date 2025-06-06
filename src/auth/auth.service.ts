@@ -1,4 +1,11 @@
-import { Injectable, UnauthorizedException, Logger, BadRequestException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  Logger,
+  BadRequestException,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsuarioService } from 'src/usuario/usuario.service';
 import { CreateUsuarioDto } from 'src/usuario/dto/create-usuario.dto';
@@ -14,7 +21,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 
 @Injectable()
 export class AuthService {
-  private readonly logger = new Logger(AuthService.name)
+  private readonly logger = new Logger(AuthService.name);
   private readonly BCRYPT_SALT_ROUNDS = 10;
   private readonly OTP_LENGTH = 6;
   private readonly OTP_MINUTES = 15; // OTP expires in 15 min
@@ -29,7 +36,8 @@ export class AuthService {
   ) {}
 
   private generateOtp(length: number = this.OTP_LENGTH): string {
-    const characters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const characters =
+      'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let otp = '';
     for (let i = 0; i < length; i++) {
       otp += characters.charAt(Math.floor(Math.random() * characters.length));
@@ -40,16 +48,15 @@ export class AuthService {
   private hashOtp(otp: string): string {
     return createHash('sha256').update(otp).digest('hex');
   }
-  
-  async register(data: CreateUsuarioDto) {
 
+  async register(data: CreateUsuarioDto) {
     data.senha = await bcrypt.hash(data.senha, this.BCRYPT_SALT_ROUNDS);
 
     const user = await this.usuarioService.create(data);
     const payload = { nome: user.nome, email: user.email };
 
     return {
-      ...payload
+      ...payload,
     };
   }
 
@@ -69,8 +76,17 @@ export class AuthService {
       token: this.jwtService.sign(payload),
       user: {
         email: user.email,
-      }
+      },
     };
+  }
+
+  async validateTokenAndGetUser(userId: number): Promise<boolean> {
+    console.log(userId);
+    const user = await this.usuarioService.findOne(userId);
+    if (!user) {
+      throw new UnauthorizedException('Usuário não encontrado.');
+    }
+    return true;
   }
 
   async logout(token: string): Promise<void> {
@@ -80,7 +96,10 @@ export class AuthService {
     }
 
     try {
-      const decodedToken = this.jwtService.decode(token) as { exp: number; [key: string]: any };
+      const decodedToken = this.jwtService.decode(token) as {
+        exp: number;
+        [key: string]: any;
+      };
 
       if (!decodedToken || !decodedToken.exp) {
         const now = new Date();
@@ -89,16 +108,20 @@ export class AuthService {
         await this.prisma.blockedToken.create({
           data: {
             token: token,
-            expiresAt: fallbackExpiresAt
+            expiresAt: fallbackExpiresAt,
           },
         });
-        this.logger.log(`Token (potencialmente inválido) adicionado à blocklist com expiração de fallback.`);
+        this.logger.log(
+          `Token (potencialmente inválido) adicionado à blocklist com expiração de fallback.`,
+        );
         return;
       }
       const expiresAt = new Date(decodedToken.exp * 1000);
 
       if (expiresAt < new Date()) {
-        this.logger.log(`Tentativa de logout com token já expirado: ${token.substring(0, 20)}...`);
+        this.logger.log(
+          `Tentativa de logout com token já expirado: ${token.substring(0, 20)}...`,
+        );
         return;
       }
       await this.prisma.blockedToken.create({
@@ -107,13 +130,20 @@ export class AuthService {
           expiresAt: expiresAt,
         },
       });
-      this.logger.log(`Token ${token.substring(0, 20)}... adicionado à blocklist. Expira em: ${expiresAt.toISOString()}`);
+      this.logger.log(
+        `Token ${token.substring(0, 20)}... adicionado à blocklist. Expira em: ${expiresAt.toISOString()}`,
+      );
     } catch (error) {
       if (error.code === 'P2002') {
-        this.logger.warn(`Token ${token.substring(0, 20)}... já está na blocklist.`);
+        this.logger.warn(
+          `Token ${token.substring(0, 20)}... já está na blocklist.`,
+        );
         return;
       }
-      this.logger.error(`Erro ao adicionar token à blocklist: ${error.message}`, error.stack);
+      this.logger.error(
+        `Erro ao adicionar token à blocklist: ${error.message}`,
+        error.stack,
+      );
     }
   }
 
@@ -121,7 +151,9 @@ export class AuthService {
     const user = await this.usuarioService.findByEmail(email);
 
     if (!user) {
-      this.logger.warn(`Tentativa de redefinição de senha para e-mail não cadastrado: ${email}`);
+      this.logger.warn(
+        `Tentativa de redefinição de senha para e-mail não cadastrado: ${email}`,
+      );
       return;
     }
 
@@ -130,15 +162,17 @@ export class AuthService {
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + 15);
 
-
     try {
       await this.usuarioService.update(user.id, {
         resetPasswordOtp: hashedOtp,
         resetPasswordOtpExpires: expiresAt,
       });
     } catch (dbError) {
-      this.logger.error(`Falha ao salvar Otp de reset para ${email}`, dbError.stack);
-      return
+      this.logger.error(
+        `Falha ao salvar Otp de reset para ${email}`,
+        dbError.stack,
+      );
+      return;
     }
 
     try {
@@ -154,15 +188,23 @@ export class AuthService {
       });
       this.logger.log(`e-mail enviado para ${user.email}`);
     } catch (error) {
-      this.logger.error(`Falha ao enviar e-mail de redefinição para ${user.email}`, error.stack);
+      this.logger.error(
+        `Falha ao enviar e-mail de redefinição para ${user.email}`,
+        error.stack,
+      );
     }
   }
 
-  async verifyOtp(email: string, userOtp: string): Promise<{ passwordChangeSessionToken: string }> {
+  async verifyOtp(
+    email: string,
+    userOtp: string,
+  ): Promise<{ passwordChangeSessionToken: string }> {
     const user = await this.usuarioService.findByEmail(email);
 
     if (!user || !user.resetPasswordOtp || !user.resetPasswordOtpExpires) {
-      this.logger.warn('Tentativa de verificação de OTP falhou, usuário ou OTP não encontrado.');
+      this.logger.warn(
+        'Tentativa de verificação de OTP falhou, usuário ou OTP não encontrado.',
+      );
       throw new BadRequestException('OTO inválido ou expirado.');
     }
 
@@ -179,12 +221,16 @@ export class AuthService {
         resetPasswordOtp: null,
         resetPasswordOtpExpires: null,
       });
-      throw new BadRequestException('Código de verificação expirado. Por favor, solicite um novo.');
+      throw new BadRequestException(
+        'Código de verificação expirado. Por favor, solicite um novo.',
+      );
     }
 
     const sessionToken = randomBytes(32).toString('hex');
     const sessionTokenExpiresAt = new Date();
-    sessionTokenExpiresAt.setMinutes(sessionTokenExpiresAt.getMinutes() + this.SESSION_TOKEN_MINUTES);
+    sessionTokenExpiresAt.setMinutes(
+      sessionTokenExpiresAt.getMinutes() + this.SESSION_TOKEN_MINUTES,
+    );
 
     try {
       await this.usuarioService.update(user.id, {
@@ -194,8 +240,12 @@ export class AuthService {
         passwordChangeSessionTokenExpires: sessionTokenExpiresAt,
       });
     } catch (dbError: any) {
-      this.logger.error(`Falha ao criar token de sessão para ${email}: ${dbError.stack || dbError.message}`);
-      throw new InternalServerErrorException('Erro ao processar sua solicitação.');
+      this.logger.error(
+        `Falha ao criar token de sessão para ${email}: ${dbError.stack || dbError.message}`,
+      );
+      throw new InternalServerErrorException(
+        'Erro ao processar sua solicitação.',
+      );
     }
 
     this.logger.log(`OTP verificado e token de sessão criado para ${email}`);
@@ -206,7 +256,9 @@ export class AuthService {
     const { passwordChangeSessionToken, novaSenha } = resetPasswordDto;
 
     if (!passwordChangeSessionToken || !novaSenha) {
-      throw new BadRequestException('Token de sessão e nova senha são obrigatórios.');
+      throw new BadRequestException(
+        'Token de sessão e nova senha são obrigatórios.',
+      );
     }
 
     const user = await this.usuarioService.findByFields({
@@ -214,8 +266,12 @@ export class AuthService {
     });
 
     if (!user || !user.passwordChangeSessionTokenExpires) {
-      this.logger.warn(`Token de sessão inválido ${passwordChangeSessionToken.substring(0,10)}...`);
-      throw new BadRequestException('Sessão de redefinição de senha inválida ou expirada.');
+      this.logger.warn(
+        `Token de sessão inválido ${passwordChangeSessionToken.substring(0, 10)}...`,
+      );
+      throw new BadRequestException(
+        'Sessão de redefinição de senha inválida ou expirada.',
+      );
     }
 
     if (user.passwordChangeSessionTokenExpires < new Date()) {
@@ -224,61 +280,78 @@ export class AuthService {
         passwordChangeSessionToken: null,
         passwordChangeSessionTokenExpires: null,
       });
-      throw new BadRequestException('Sua sessão para redefinir senha expirou. Inicie o processo novamente.');
+      throw new BadRequestException(
+        'Sua sessão para redefinir senha expirou. Inicie o processo novamente.',
+      );
     }
 
-    const hashedPassword = await bcrypt.hash(novaSenha, this.BCRYPT_SALT_ROUNDS);
+    const hashedPassword = await bcrypt.hash(
+      novaSenha,
+      this.BCRYPT_SALT_ROUNDS,
+    );
 
     try {
       await this.usuarioService.update(user.id, {
         senha: hashedPassword,
         passwordChangeSessionToken: null,
-        passwordChangeSessionTokenExpires: null
+        passwordChangeSessionTokenExpires: null,
       });
       this.logger.log(`Senha redefinida com sucesso`);
     } catch (dbError: any) {
-      this.logger.error(`Falha ao finalizar reset de senha para usuário: ${dbError.stack || dbError.message}`);
-      throw new InternalServerErrorException('Ocorreu um erro ao redefinir sua senha.');
+      this.logger.error(
+        `Falha ao finalizar reset de senha para usuário: ${dbError.stack || dbError.message}`,
+      );
+      throw new InternalServerErrorException(
+        'Ocorreu um erro ao redefinir sua senha.',
+      );
     }
   }
 
-  async changePasswordLoggedUser(userId: number, changePasswordDto: ChangePasswordDto): Promise<void> {
+  async changePasswordLoggedUser(
+    userId: number,
+    changePasswordDto: ChangePasswordDto,
+  ): Promise<void> {
     const { senhaAtual, novaSenha, confirmarNovaSenha } = changePasswordDto;
 
     if (novaSenha !== confirmarNovaSenha) {
-      throw new BadRequestException('A nova senha e a confirmação não conferem.');
+      throw new BadRequestException(
+        'A nova senha e a confirmação não conferem.',
+      );
     }
 
     const user = await this.usuarioService.findOne(userId);
     if (!user) {
-      this.logger.error(`Usuário não encontrado para mudança de senha: Id ${userId}`);
+      this.logger.error(`Usuário não encontrado: ID ${userId}`);
       throw new NotFoundException('Usuário não encontrado.');
     }
 
     const isCurrentPasswordValid = await bcrypt.compare(senhaAtual, user.senha);
     if (!isCurrentPasswordValid) {
-      this.logger.warn(`Tentativa de mudança de senha falhou para usuário ID ${userId}: Senha atual incorreta.`);
-      throw new UnauthorizedException('A senha atual fornecida está incorreta.');
+      this.logger.warn(`Senha atual incorreta: ID ${userId}`);
+      throw new UnauthorizedException('Senha atual incorreta.');
     }
 
     if (await bcrypt.compare(novaSenha, user.senha)) {
-      throw new BadRequestException('A nova senha não pode ser igual à senha atual.');
+      throw new BadRequestException(
+        'A nova senha não pode ser igual à senha atual.',
+      );
     }
 
-    const hashedNewPassword = await bcrypt.hash(novaSenha, this.BCRYPT_SALT_ROUNDS);
+    const hashedNewPassword = await bcrypt.hash(
+      novaSenha,
+      this.BCRYPT_SALT_ROUNDS,
+    );
 
     try {
       await this.usuarioService.update(userId, {
         senha: hashedNewPassword,
-        resetPasswordOtp: null,
-        resetPasswordOtpExpires: null,
-        passwordChangeSessionToken: null,
-        passwordChangeSessionTokenExpires: null
       });
-      this.logger.log(`Senha alterada com sucesso pelo usuário logado ID: ${userId}`);
+      this.logger.log(`Senha alterada com sucesso: ID ${userId}`);
     } catch (dbError: any) {
-      this.logger.error(`Falha ao atualizar senha para ID ${userId}: ${dbError.stack || dbError.message}`);
-      throw new InternalServerErrorException('Ocorreu um erro ao tentar alterar sua senha.');
+      this.logger.error(
+        `Erro ao atualizar senha ID ${userId}: ${dbError.stack || dbError.message}`,
+      );
+      throw new InternalServerErrorException('Erro ao alterar a senha.');
     }
   }
 
@@ -294,9 +367,14 @@ export class AuthService {
           },
         },
       });
-      this.logger.log(`Limpeza concluída. ${result.count} tokens bloqueados expirados foram removidos.`);
+      this.logger.log(
+        `Limpeza concluída. ${result.count} tokens bloqueados expirados foram removidos.`,
+      );
     } catch (error) {
-      this.logger.error('Falha ao limpar tokens bloqueados expirados.', error.stack);
+      this.logger.error(
+        'Falha ao limpar tokens bloqueados expirados.',
+        error.stack,
+      );
     }
   }
 }

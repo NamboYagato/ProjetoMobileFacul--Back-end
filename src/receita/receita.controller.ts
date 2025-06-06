@@ -1,85 +1,113 @@
 import {
-    Controller,
-    Get,
-    Post,
-    Put,
-    Delete,
-    Param,
-    Body,
-    ParseIntPipe,
-    UseGuards, Req,
-    Query
-  } from '@nestjs/common';
-  import { Request } from 'express';
-  import { ReceitaService } from './receita.service';
-  import { CreateReceitaDto } from './dto/create-receita.dto';
-  import { UpdateReceitaDto } from './dto/update-receita.dto';
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
+  ParseIntPipe,
+  UseGuards,
+  Req,
+  Query,
+  UnauthorizedException,
+  UseInterceptors,
+  UploadedFiles,
+} from '@nestjs/common';
+import { Request } from 'express';
+import { ReceitaService } from './receita.service';
+import { CreateReceitaDto } from './dto/create-receita.dto';
+import { UpdateReceitaDto } from './dto/update-receita.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { TipoReceita } from '@prisma/client';
 import { JwtSecretRequestType } from '@nestjs/jwt';
-  
-  @Controller('receitas')
-  export class ReceitaController {
-    constructor(private readonly receitaService: ReceitaService) {}
-    
-    @UseGuards(JwtAuthGuard)
-    @Get()
-    async findAll(@Req() req: Request, @Query('search') search?: string, @Query('type') type?: TipoReceita,) {
-      return this.receitaService.findAll(search, type, (req as any).user.id);
-    }
+import { FilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 
-    @UseGuards(JwtAuthGuard)
-    @Get('publicas')
-    async findAllPublicRecipes(@Query('search') search?: string, @Query('type') type?: TipoReceita) {
-      return this.receitaService.findAllPublicRecipe(search, type);
-    }
-    
-    @UseGuards(JwtAuthGuard)
-    @Get(':id')
-    async findOne(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
-      const userId = (req as any)?.user?.id;
-      return this.receitaService.findOne(id, userId);
-    }
-  
-    @UseGuards(JwtAuthGuard)
-    @Post('create')
-    async create(@Req() req: Request, @Body() dto: CreateReceitaDto) {
-      const autorId = (req as any).user.id;
-      const data = {
-        ...dto,
-        autorId,
-      };
+@Controller('receitas')
+export class ReceitaController {
+  constructor(private readonly receitaService: ReceitaService) {}
 
-      return await this.receitaService.create(data);
-    }
-  
-    @UseGuards(JwtAuthGuard)
-    @Put(':id')
-    async update(@Req() req: Request, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateReceitaDto,) {
-      const userId = (req as any).user.id;
-      return await this.receitaService.update(id, dto, userId);
-    }
-  
-    @UseGuards(JwtAuthGuard)
-    @Delete(':id')
-    async delete(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
-      const userId = (req as any).user.id;
-      return await this.receitaService.delete(id, userId);
-    }
+  @UseGuards(JwtAuthGuard)
+  @Get()
+  async findAll(
+    @Req() req: Request,
+    @Query('search') search?: string,
+    @Query('type') type?: TipoReceita,
+  ) {
+    return this.receitaService.findAll(search, type, (req as any).user.id);
+  }
 
-    // CURTIDAS
-    @UseGuards(JwtAuthGuard)
-    @Post(':id/curtir')
-    async toggleLike(@Req() req: Request, @Param('id', ParseIntPipe) receitaId: number) {
-      const userId = (req as any).user.id;
-      return this.receitaService.toggleLike(receitaId, userId);
-    }
+  @UseGuards(JwtAuthGuard)
+  @Get('publicas')
+  async findAllPublicRecipes(
+    @Query('search') search?: string,
+    @Query('type') type?: TipoReceita,
+  ) {
+    return this.receitaService.findAllPublicRecipe(search, type);
+  }
 
-    // FAVORITOS
-    @UseGuards(JwtAuthGuard)
-    @Post(':id/favoritar')
-    async toggleFavorite(@Req() req: Request, @Param('id', ParseIntPipe) receitaId: number) {
-      const userId = (req as any).user.id;
-      return this.receitaService.toggleFavorite(receitaId, userId);
-    }
+  @UseGuards(JwtAuthGuard)
+  @Get('privadas')
+  async findRecipesByUserId(@Req() req: Request) {
+    const userId = (req as any).user.id;
+    if (!userId) throw new UnauthorizedException('UserId não encontrado.');
+    return await this.receitaService.findRecipeByUserId(userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id')
+  async findOne(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
+    const userId = (req as any)?.user?.id;
+    return this.receitaService.findOne(id, userId);
+  }
+
+  @Post('create')
+  @UseGuards(JwtAuthGuard)
+  async create(@Req() req: Request, @Body() dto: CreateReceitaDto) {
+    const autorId = (req as any).user.id;
+    return this.receitaService.create({ ...dto, autorId });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put(':id')
+  @UseInterceptors(FilesInterceptor('imagens'))
+  async update(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateReceitaDto,
+    @UploadedFiles() imagens: Express.Multer.File[],
+  ) {
+    const userId = (req as any).user.id;
+    return await this.receitaService.update(id, dto, userId, imagens);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete(':id')
+  async delete(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
+    const userId = (req as any).user.id;
+    return await this.receitaService.delete(id, userId);
+  }
+
+  // CURTIDAS
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/curtir')
+  async toggleLike(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) receitaId: number,
+  ) {
+    const userId = (req as any).user.id;
+    return this.receitaService.toggleLike(receitaId, userId);
+  }
+
+  // FAVORITOS
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/favoritar')
+  async toggleFavorite(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) receitaId: number,
+  ) {
+    const userId = (req as any).user.id;
+    return this.receitaService.toggleFavorite(receitaId, userId);
+  }
 }

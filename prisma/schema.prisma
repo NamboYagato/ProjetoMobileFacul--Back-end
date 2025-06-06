@@ -65,8 +65,8 @@ model Receita {
 // Tabela de imagens
 model Imagem {
   id          Int       @id @default(autoincrement())
-  url         String
-  tipo        String 
+  contentType String
+  dataBase64  String  @db.Text
   receita     Receita   @relation(fields: [receitaId], references: [id])
   receitaId   Int
 }
