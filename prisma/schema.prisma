@@ -110,3 +110,9 @@ model Favorito {
 
   @@unique([usuarioId, receitaId]) // O usuário só pode favoritar a receita uma vez
 }
+
+model BlockedToken {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  expiresAt DateTime
+}
